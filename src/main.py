@@ -366,13 +366,6 @@ def run_experiment(args, n_hidden=None, n_layers=None, dropout=None, n_bases=Non
                                 use_cuda=use_cuda,
                                 gpu=args.gpu,
                                 analysis=args.run_analysis)
-    # model = torch.nn.Linear(512, 512)
-    # total_params, total_size_mb = calculate_model_size(model)
-    total_params_1, total_size_mb_1=calculate_model_size(diffu)
-    # total_params+=total_params_1
-    # total_size_mb+=total_size_mb_1
-    print(f"模型参数总数: {total_params_1}")
-    print(f"模型大小: {total_size_mb_1:.2f} MB")
 
 
     fitlog.add_hyper_in_file(__file__)
