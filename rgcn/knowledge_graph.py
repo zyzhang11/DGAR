@@ -1,8 +1,3 @@
-""" Knowledge graph dataset for Relational-GCN
-Code adapted from authors' implementation of Relational-GCN
-https://github.com/tkipf/relational-gcn
-https://github.com/MichSchli/RelationPrediction
-"""
 
 from __future__ import absolute_import
 from __future__ import print_function

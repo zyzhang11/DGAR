@@ -1,11 +1,3 @@
-# @Time    : 2019-08-10 11:20
-# @Author  : Lee_zix
-# @Email   : Lee_zix@163.com
-# @File    : main.py
-# @Software: PyCharm
-"""
-The entry of the KGEvolve
-"""
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
