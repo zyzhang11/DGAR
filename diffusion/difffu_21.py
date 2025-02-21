@@ -567,17 +567,10 @@ class DiffuRec(nn.Module):
             
             model_output_t_ = self.q_posterior_mean_variance(x_start=x_0[:,-1,:], x_t=x_t, t=t)
 
-            # entity_all, ent_embeding=self.select_entity(tag, model_output, args,use_cuda)
-
-            # inverse_triples = triples[:, [2, 1, 0]]
-            # inverse_triples[:, 1] = inverse_triples[:, 1] + self.num_rels
-            # all_triples = torch.cat([triples, inverse_triples])
-            # all_triples = all_triples.to(model.gpu)
+            
             if args.delete_score:
                 new_x_0=model_output_t_
 
-            # v0
-            # model_output=model_output[0].requires_grad_(True)
             else:
                 model_output = torch.concat([x_0[:,0:2,:], model_output_t_.unsqueeze(dim=1)], dim=1)
                 model_output=model_output.requires_grad_(True)
@@ -601,49 +594,7 @@ class DiffuRec(nn.Module):
                 # new_x_0=model_output_t_.float() + model_log_variance *(grad* args.classifier_scale).float()
                 new_x_0=model_output_t_.float() + (grad* args.classifier_scale).float()
 
-            # v1-0917
-            # model_output=model_output.requires_grad_(True)
-            # e_embeding, static_emb, r_embed, _,_ = model(history_glist,  static_graph, use_cuda,model_output,tag,diffu_rep=args.diffuc)
-
-            # embedding = F.normalize(e_embeding[-1]) if model.layer_norm else e_embeding[-1]
-            # score = model.decoder_ob.forward(embedding, r_embed, all_triples, mode="test")
-
-            # log_probs = F.log_softmax(score, dim=-1)
-
-            # selected = log_probs[range(len(score)),all_triples[:,2]]
-            # grad=torch.autograd.grad(selected.sum(), model_output)[0]
-            # diffu_var = torch.autograd.grad(model_output.sum(), input_item)[0].var()
-            # new_x_0=model_output.float() + (grad* args.classifier_scale).float()
-            # new_x_0=model_output.float() + diffu_var *(grad* args.classifier_scale).float()
-
-            # v2-0917
-            # diffu_var = torch.autograd.grad(model_output.sum(), input_item)[0].var()
-            # for i in range(args.grad_epoch):
-            #     # input_item = item_rep.detach().requires_grad_(True)
-            #     model_output = model_output.detach().requires_grad_(True)
-            #     # input_item=input_item.detach().requires_grad_(True)
-            #     e_embeding, static_emb, r_embed, _, _ = model(
-            #         history_glist,  static_graph, use_cuda, model_output, tag, diffu_rep=args.diffuc)
-
-            #     embedding = F.normalize(e_embeding[-1]) if model.layer_norm else e_embeding[-1]
-            #     score = model.decoder_ob.forward(
-            #         embedding, r_embed, all_triples, mode="test")
-
-            #     log_probs = F.log_softmax(score, dim=-1)
-
-            #     selected = log_probs[range(len(score)), all_triples[:, 2]]
-            #     grad = torch.autograd.grad(selected.sum(), model_output)[0]
-                
-            #     new_x_0 = model_output.float() + diffu_var *(grad* args.classifier_scale).float()
-            #     model_output = new_x_0
-
         return new_x_0, model_log_variance,x_0
-        # return model_output
-
-        # pred_xstart=self._predict_xstart_from_eps(x_t=x_t, t=t, eps=model_output)
-        # model_mean= self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x_t, t=t)
-        # x_0 = model_output  ##output predict
-        # return x_0, []
 
     def p_sample(self, item_rep, noise_x_t, model, tag, t, c, sr_embs, mask_seq, history_glist, triples, static_graph, use_cuda, args, mask=None, query_sub3=None):
         # model_mean, model_log_variance = self.p_mean_variance(item_rep, noise_x_t,model,tag, t,c,sr_embs, mask_seq,history_glist, triples, static_graph, use_cuda,args,query_sub3)
