@@ -75,10 +75,10 @@ def test(args,model, history_list, test_list, num_rels, num_nodes, use_cuda, all
         else:
             checkpoint = torch.load(
                 model_name, map_location=torch.device('cpu'))
-        print("Load Model name: {}. Using best epoch : {}".format(
-            model_name, checkpoint['epoch']))  # use best stat checkpoint
+        # print("Load Model name: {}. Using best epoch : {}".format(
+        #     model_name, checkpoint['epoch']))  # use best stat checkpoint
         print("\n"+"-"*10+"start testing"+"-"*10+"\n")
-        model.load_state_dict(checkpoint['state_dict'])
+        model.load_state_dict(checkpoint)
 
     model.eval()
     # do not have inverse relation in test input
@@ -143,7 +143,6 @@ def test(args,model, history_list, test_list, num_rels, num_nodes, use_cuda, all
             test_triples, final_score, all_ans_list[time_idx], eval_bz=1000, rel_predict=0)
         
         mrr,hits=utils.stat_ranks_record(rank_filter,"predict_filter_ent")
-        
         
         
         # used to global statistic
@@ -333,7 +332,8 @@ def run_experiment(args, n_hidden=None, n_layers=None, dropout=None, n_bases=Non
                           relation_prediction=args.relation_prediction,
                           use_cuda=use_cuda,
                           gpu=args.gpu,
-                          analysis=args.run_analysis)
+                          analysis=args.run_analysis,
+                          args=args)
 
     model_repre = RecurrentRGCN(args.decoder,
                                 args.encoder,
@@ -365,7 +365,8 @@ def run_experiment(args, n_hidden=None, n_layers=None, dropout=None, n_bases=Non
                                 relation_prediction=args.relation_prediction,
                                 use_cuda=use_cuda,
                                 gpu=args.gpu,
-                                analysis=args.run_analysis)
+                                analysis=args.run_analysis,
+                                args=args)
 
 
     fitlog.add_hyper_in_file(__file__)
@@ -391,6 +392,8 @@ def run_experiment(args, n_hidden=None, n_layers=None, dropout=None, n_bases=Non
         diffu.parameters(), lr=args.lr, weight_decay=1e-5)
     per_epochs = (len(train_list)//args.accumulation_steps)
     accumulation_steps = args.accumulation_steps
+    
+    
 
     # scheduler = lr_scheduler.CosineAnnealingWarmRestarts(
     #     optimizer_diffu, T_0=50 * per_epochs, T_mult=2, eta_min=args.lr/100)
@@ -470,13 +473,17 @@ def run_experiment(args, n_hidden=None, n_layers=None, dropout=None, n_bases=Non
                 
                 output,diffu_rep,output_reply_triple=model_diffpre.gereration_feature(args,train_sample_num,model_diffpre,model_repre,last_history,last_output,static_graph_diffu,output_re,output,use_cuda,train_list)
                 
-                best_mrr=0
+                # best_mrr=0
+                early_stopping = EarlyStopping(patience=5, verbose=False, path=model_state_file)
+                early_stopping_dif = EarlyStopping(patience=5, verbose=False, path=diffu_model_state_file)
                 if train_sample_num>1:
                     if use_cuda:
                         checkpoint = torch.load(model_state_file, map_location=torch.device(args.gpu))
+                        checkpoint_diffu = torch.load(diffu_model_state_file, map_location=torch.device(args.gpu))
                     else:
                         checkpoint = torch.load(model_state_file, map_location=torch.device('cpu'))
-                    model.load_state_dict(checkpoint['state_dict'])
+                        checkpoint_diffu = torch.load(diffu_model_state_file, map_location=torch.device('cpu'))
+                    model.load_state_dict(checkpoint)
                 if diffu_rep is not None:
                     model_output_o=diffu_rep[:,-1,:]
                 else:
@@ -510,9 +517,10 @@ def run_experiment(args, n_hidden=None, n_layers=None, dropout=None, n_bases=Non
                         _,diffu_rep_test,output_reply_triple_test=model_diffpre.gereration_feature(args,train_sample_num,model_diffpre,model_repre,last_history,last_output,static_graph_diffu,valid_list[train_sample_num],test_triples_input,use_cuda,train_list)
                     mrr, hits,_ = test_single(args,model, history_glist, test_triples_input, train_sample_num, num_rels, num_nodes, use_cuda, all_ans_list_valid, static_graph, diffu_rep_test,model_output_o,output_reply_triple_test)
                     
-                    if mrr > best_mrr:
-                        best_mrr = mrr
-                        torch.save({'state_dict': model.state_dict(), 'epoch': epoch}, model_state_file)
+                    early_stopping(mrr,model)
+                    if early_stopping.early_stop:
+                        break
+                    
                           
                 
                 if train_sample_num==idx[-1]:
@@ -524,8 +532,6 @@ def run_experiment(args, n_hidden=None, n_layers=None, dropout=None, n_bases=Non
                     if args.delete_feature_reply is False:
                         _,diffu_rep_test,output_reply_triple_test=model_diffpre.gereration_feature(args,train_sample_num,model_diffpre,model_repre,last_history,last_output,static_graph_diffu,test_list[train_sample_num],test_triples_input,use_cuda,train_list)
                     mrr, hits, rank_filter = test_single(args,model, history_glist, test_triples_input, train_sample_num, num_rels, num_nodes, use_cuda, all_ans_list_test, static_graph, diffu_rep_test,model_output_o,output_reply_triple_test)
-                    utils.stat_ranks(ranks_filter_predict, "predicter_filter_ent")
-                    mrr_filter = utils.stat_ranks(ranks_filter, "completion_filter_ent")
                     print("the lastet time metric",mrr.item(),hits[0].item(),hits[1].item(),hits[2].item())     
                     
                 # diffu
@@ -535,14 +541,17 @@ def run_experiment(args, n_hidden=None, n_layers=None, dropout=None, n_bases=Non
                     true_triples = getReverseSample(output, num_rels)
 
                     emebding_entity = emebding_entity.detach()
-                    best_loss=10000
+                    # best_loss=10000
+                    mrr_diff=0
                     if train_sample_num>1:
                         if use_cuda:
                             checkpoint = torch.load(diffu_model_state_file, map_location=torch.device(args.gpu))
                         else:
                             checkpoint = torch.load(diffu_model_state_file, map_location=torch.device('cpu'))
-                        diffu.load_state_dict(checkpoint['state_dict'])
+                        diffu.load_state_dict(checkpoint)
+                    
                     for epoch in range(args.diffu_epochs):
+                        diffu.train()
                         scores, diffu_rep_1, weights, t, mask_seq,emb_ent,noise,query_object3,_ = diffu(sequence,true_triples,args, True, use_cuda,static_graph_diffu,train_sample_num,model_output=diffu_rep, targets=output_reply_triple)
                         loss = diffu.loss_diffu_ce(diffu_rep_1, true_triples,query_object3,true_triples,mask_seq,emb_ent)
                         # loss = loss_diffu_value / accumulation_steps  # 将损失除以累积次数，这样使得每次累积的梯度相当于一个较大批次的梯度
@@ -554,22 +563,42 @@ def run_experiment(args, n_hidden=None, n_layers=None, dropout=None, n_bases=Non
                         optimizer_diffu.step()
                         optimizer_diffu.zero_grad()  # 重置梯度
                         
-                        if loss < best_loss:
-                            best_loss = loss
-                            torch.save({'state_dict': diffu.state_dict(), 'epoch': epoch}, diffu_model_state_file)
+                        #val
+                        diffu.eval()
+                        args.vl=True
+                        valid_triples_input = torch.LongTensor(
+                        valid_list[train_sample_num]).cuda() if use_cuda else torch.LongTensor(valid_list[train_sample_num])
+                        valid_triples_input = valid_triples_input.to(args.gpu)
+                        
+                        true_triples_valid = getReverseSample(valid_triples_input, num_rels)
+                        
+                        diffu_reps1 = []
+                        scores, diffu_rep1, weights, t, _,ent_emb,noise,_ ,_= diffu(sequence,true_triples_valid,args, False, use_cuda
+                                                                 ,static_graph_diffu)
+                        diffu_reps1.append(diffu_rep1)
+                        scores_rec_diffu = diffu.diffu_rep_pre(diffu_reps1,ent_emb) 
+                        mrr_filter_snap, mrr_snap, rank_raw, rank_filter = utils.get_total_rank(
+                        true_triples_valid, scores_rec_diffu, all_ans_list_valid[train_sample_num], eval_bz=1000, rel_predict=0)
+                        mrr,hits=utils.stat_ranks_record(rank_filter,"predict_filter_ent")
+                        args.vl=False
+                        early_stopping_dif(mrr,diffu)
+                        if early_stopping_dif.early_stop:
+                            break
                             
+                
                 last_history = [snap for snap in history_glist]
                 last_output = [snap for snap in output]
                 
                 if use_cuda:
                     checkpoint = torch.load(model_state_file, map_location=torch.device(args.gpu))
+                    # if 
                     checkpoint_diffu = torch.load(diffu_model_state_file, map_location=torch.device(args.gpu))
                 else:
                     checkpoint = torch.load(model_state_file, map_location=torch.device('cpu'))
                     checkpoint_diffu = torch.load(diffu_model_state_file, map_location=torch.device('cpu'))
                     
-                model_repre.load_state_dict(checkpoint['state_dict'])
-                model_diffpre.load_state_dict(checkpoint_diffu['state_dict'])
+                model_repre.load_state_dict(checkpoint)
+                model_diffpre.load_state_dict(checkpoint_diffu)
 
         mrr_raw, mrr_filter, mrr_raw_r, mrr_filter_r, last_history, last_output,mrrs,h1s,h3s,h10s,m_,h1,h3,h10 = test(args,
                                                                                        model,
@@ -601,7 +630,7 @@ if __name__ == '__main__':
                         help="batch-size")
     parser.add_argument("--seed", type=int, default=1,
                         help="random seed")
-    parser.add_argument("-d", "--dataset", type=str,  default="ICEWS05-15",
+    parser.add_argument("-d", "--dataset", type=str,  default="ICEWS14s",
                         help="dataset to use")
     parser.add_argument("--test", action='store_true', default=False,
                         help="load stat from dir and directly test")
@@ -665,9 +694,9 @@ if __name__ == '__main__':
     # configuration for stat training
     parser.add_argument("--n-epochs", type=int, default=1,
                         help="number of minimum training epochs on each time step")
-    parser.add_argument("--regcn_epochs", type=int, default=7,
+    parser.add_argument("--regcn_epochs", type=int, default=10,
                     help="number of minimum training epochs on each time step")#5
-    parser.add_argument("--diffu_epochs", type=int, default=3,
+    parser.add_argument("--diffu_epochs", type=int, default=10,
                     help="number of minimum training epochs on each time step")
     parser.add_argument("--lr", type=float, default=0.001,
                         help="learning rate")
@@ -740,6 +769,7 @@ if __name__ == '__main__':
     parser.add_argument("--max_len", type=int, default=64)
     parser.add_argument("--temperature_object", type=float, default=0.5)
     parser.add_argument("--his_max_len", type=int, default=128)
+    parser.add_argument('--vl',type=bool, default=False)
 
     parser.add_argument('--history_sample', default=64,
                         help='rescal timesteps')
@@ -748,8 +778,8 @@ if __name__ == '__main__':
     parser.add_argument('--delete_his_prompt', default=False)
     parser.add_argument('--delete_temporal_attention', default=False)
     parser.add_argument('--delete_feature_reply', default=False)
-    parser.add_argument('--mu',type=float, default=1.0)
-    parser.add_argument('--mu_r',type=float, default=1.0)
+    parser.add_argument('--mu', default=1)
+    parser.add_argument('--mu_r', default=1)
     
     # parser.add_argument("--reply_batch_num", type=int, default=128)
     parser.add_argument("--heads", type=int, default=4,

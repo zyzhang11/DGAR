@@ -568,7 +568,7 @@ class DiffuRec(nn.Module):
             model_output_t_ = self.q_posterior_mean_variance(x_start=x_0[:,-1,:], x_t=x_t, t=t)
 
             
-            if args.delete_score:
+            if args.delete_score or args.vl:
                 new_x_0=model_output_t_
 
             else:
@@ -600,11 +600,16 @@ class DiffuRec(nn.Module):
         # model_mean, model_log_variance = self.p_mean_variance(item_rep, noise_x_t,model,tag, t,c,sr_embs, mask_seq,history_glist, triples, static_graph, use_cuda,args,query_sub3)
         model_mean,model_log_variance,x_0 = self.p_mean_variance(item_rep, noise_x_t, model, tag, t, c, sr_embs,
                                           mask_seq, history_glist, triples, static_graph, use_cuda, args, query_sub3)
-        noise = torch.randn_like(noise_x_t)
-        nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(noise_x_t.shape) - 1))))  # no noise when t == 0
-        sample_xt = model_mean + nonzero_mask * th.exp(0.5 * model_log_variance) * noise  ## sample x_{t-1} from the \mu(x_{t-1}) distribution based on the reparameter trick
-        sample_xt = torch.concat(
-                [x_0[:,0:2,:], sample_xt.unsqueeze(dim=1)], dim=1)
+        if args.vl:
+            noise = torch.randn_like(noise_x_t)
+            nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(noise_x_t.shape) - 1)))) 
+            sample_xt = model_mean + nonzero_mask * th.exp(0.5 * model_log_variance) * noise 
+        else:
+            noise = torch.randn_like(noise_x_t)
+            nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(noise_x_t.shape) - 1))))  # no noise when t == 0
+            sample_xt = model_mean + nonzero_mask * th.exp(0.5 * model_log_variance) * noise  ## sample x_{t-1} from the \mu(x_{t-1}) distribution based on the reparameter trick
+            sample_xt = torch.concat(
+                    [x_0[:,0:2,:], sample_xt.unsqueeze(dim=1)], dim=1)
         return sample_xt
 
     # def reverse_p_sample(self, model, tag, item_rep, noise_x_t, c, sr_embs, mask_seq, history_glist, triples, static_graph, args, use_cuda, mask=None, query_sub3=None):

@@ -656,3 +656,41 @@ def soft_max(z):
     t = np.exp(z)
     a = np.exp(z) / np.sum(t)
     return a
+
+
+class EarlyStopping:
+    def __init__(self, patience=7, verbose=False, delta=0, path='checkpoint.pt', trace_func=print):
+        self.patience = patience
+        self.verbose = verbose
+        self.delta = delta
+        self.path = path
+        self.trace_func = trace_func
+
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.val_score_max = float('-inf')  # 初始化为负无穷，表示得分越高越好
+
+    def __call__(self, val_score, model):
+        # 监控验证集指标（得分越高越好）
+        if self.best_score is None:
+            self.best_score = val_score
+            self.save_checkpoint(val_score, model)
+        elif val_score < self.best_score + self.delta:  # 如果得分没有显著提升
+            self.counter += 1
+            # self.trace_func(f"EarlyStopping counter: {self.counter} out of {self.patience}")
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:  # 如果得分有显著提升
+            self.best_score = val_score
+            self.save_checkpoint(val_score, model)
+            self.counter = 0
+
+    def save_checkpoint(self, val_score, model):
+        """
+        保存验证集得分最高的模型。
+        """
+        if self.verbose:
+            self.trace_func(f"Validation score increased ({self.val_score_max:.6f} --> {val_score:.6f}).  Saving model ...")
+        torch.save(model.state_dict(), self.path)
+        self.val_score_max = val_score

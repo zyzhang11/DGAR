@@ -297,11 +297,11 @@ class RecurrentRGCN(nn.Module):
         if mode is 'e':
             scores_ob = self.decoder_ob.forward(
                     e_embedding, r_embedding, reply).view(-1, self.num_ents)
-            loss = self.loss_e(scores_ob, all_triples[:, 2])
+            loss = self.loss_e(scores_ob, reply[:, 2])
         elif mode is 'r':
             score_rel = self.rdecoder.forward(
                 e_embedding, r_embedding, reply, mode="train").view(-1, 2 * self.num_rels)
-            loss = self.loss_r(score_rel, all_triples[:, 1])
+            loss = self.loss_r(score_rel, reply[:, 1])
         return loss
 
     def loss_diffu_ce(self, rep_diffu,r_emb,labels, true_triples=None, mask_seq=None, emb_ent=None):
@@ -318,6 +318,15 @@ class RecurrentRGCN(nn.Module):
         loss_ent = self.loss_e(scores_ob, labels[:, 2])
         
         return loss_ent
+    def get_all_triple(self,triples):
+        inverse_triples = triples[:, [2, 1, 0]]
+        mask = inverse_triples[:, 1] < self.num_rels
+        inverse_triples[mask, 1] = inverse_triples[mask, 1] + self.num_rels
+        inverse_triples[~mask, 1] = inverse_triples[~mask, 1] - self.num_rels
+        
+        all_triples = torch.cat([triples, inverse_triples])
+        all_triples = all_triples.to(self.gpu)
+        return all_triples
     
     
     def get_loss(self, glist, triples, static_graph, use_cuda,known_entities=None,negative_rate=None, model_output=None,model_output_x_t=None,tag=None, diffuc=None, output_reply_triple=None, current_query_history_graph=None,mode=None,inc_model=None):
@@ -340,15 +349,11 @@ class RecurrentRGCN(nn.Module):
         if model_output is not None:
             entity_all, ent_embeding = self.select_entity(
                 tag, model_output, use_cuda)
+            output_reply_triple = torch.tensor(output_reply_triple).cuda()
+            all_output_reply_triple=self.get_all_triple(output_reply_triple)
 
-        inverse_triples = triples[:, [2, 1, 0]]
-        mask = inverse_triples[:, 1] < self.num_rels
-        inverse_triples[mask, 1] = inverse_triples[mask, 1] + self.num_rels
-        inverse_triples[~mask, 1] = inverse_triples[~mask, 1] - self.num_rels
+        all_triples=self.get_all_triple(triples)
         
-        all_triples = torch.cat([triples, inverse_triples])
-        all_triples = all_triples.to(self.gpu)
-
         evolve_embs, static_emb, r_emb, _, _ = self.forward(glist, static_graph, use_cuda, model_output,model_output_x_t, tag, diffu_rep=diffuc,
                                                             output_reply_triple=output_reply_triple, current_query_history_graph=current_query_history_graph)
         pre_emb = F.normalize(
@@ -370,8 +375,8 @@ class RecurrentRGCN(nn.Module):
             loss_rel += self.loss_r(score_rel, all_triples[:, 1])
         
         if model_output is not None:
-            loss_ent += args.mu*self.loss_of_reply(pre_emb,r_emb,output_reply_triple,mode='e')
-            loss_rel += args.mu_r*self.loss_of_reply(pre_emb,r_emb,output_reply_triple,mode='r')
+            loss_ent += self.args.mu*self.loss_of_reply(pre_emb,r_emb,all_output_reply_triple,mode='e')
+            loss_rel += self.args.mu_r*self.loss_of_reply(pre_emb,r_emb,all_output_reply_triple,mode='r')
 
         if self.use_static:
             if self.discount == 1:

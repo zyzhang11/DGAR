@@ -258,7 +258,9 @@ class Att_Diffuse_model(nn.Module):
             entity_all, ent_embeding = self.select_entity(
                 targets, model_output, use_cuda)
             initial_h[entity_all[:], :] = self.alpha*initial_h[entity_all[:],
-                                                            :]+(1-self.alpha)*ent_embeding[entity_all[:], :]
+                                                            :]+(1-self.alpha)*self.linear_map(ent_embeding[entity_all[:], :])
+            # initial_h[entity_all[:], :] = self.alpha*initial_h[entity_all[:],
+            #                                                 :]+(1-self.alpha)*ent_embeding[entity_all[:], :]
         mask_seq=None
         noise=None
         tagets = None
